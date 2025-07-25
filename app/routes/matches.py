@@ -103,11 +103,25 @@ async def confirm_player(match_id: str, user_id: str = Body(...)):
     return {"message": "Jugador confirmado"}
 
 @router.post("/{match_id}/status")
-async def update_match_status(match_id: str, status: str = Body(...)):
+async def update_match_status(
+    match_id: str,
+    user_id: str = Body(...),
+    status: str = Body(...)
+):
     doc_ref = db.collection("Matches").document(match_id)
     doc = await doc_ref.get()
     if not doc.exists:
         raise HTTPException(status_code=404, detail="Reto no encontrado")
 
+    data = doc.to_dict()
+    allowed_status = ["open", "confirmed", "completed", "cancelled"]
+
+    if status not in allowed_status:
+        raise HTTPException(status_code=400, detail="Estado no permitido")
+
+    if data["creator_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Solo el creador puede cambiar el estado")
+
     await doc_ref.update({"status": status})
-    return {"message": f"Estado cambiado a {status}"}
+    return {"message": f"Estado cambiado a '{status}'"}
+
