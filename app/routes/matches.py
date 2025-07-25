@@ -9,84 +9,105 @@ import uuid
 router = APIRouter()
 
 @router.post("/")
-def create_match(match: Match):
+async def create_match(match: Match):
     match_id = str(uuid.uuid4())
     match.id = match_id
-    db.collection("Matches").document(match_id).set(match.model_dump())
+    await db.collection("Matches").document(match_id).set(match.model_dump())
     return {"message": "Reto creado", "id": match_id}
 
 @router.get("/")
-def list_matches():
+async def list_matches():
     matches = db.collection("Matches").stream()
-    return [doc.to_dict() for doc in matches]
+    return [doc.to_dict() async for doc in matches]
 
 @router.get("/{match_id}")
-def get_match(match_id: str):
-    doc = db.collection("Matches").document(match_id).get()
+async def get_match(match_id: str):
+    doc = await db.collection("Matches").document(match_id).get()
     if doc.exists:
         return doc.to_dict()
     raise HTTPException(status_code=404, detail="Reto no encontrado")
 
 
 @router.put("/{match_id}")
-def update_match(match_id: str, data: dict = Body(...)):
+async def update_match(match_id: str, data: dict = Body(...)):
     ref = db.collection("Matches").document(match_id)
-    if ref.get().exists:
-        ref.update(data)
+    doc = await ref.get()
+    if doc.exists:
+        await ref.update(data)
         return {"message": "Reto actualizado"}
     raise HTTPException(status_code=404, detail="Reto no encontrado")
 
 @router.delete("/{match_id}")
-def delete_match(match_id: str):
+async def delete_match(match_id: str):
     ref = db.collection("Matches").document(match_id)
-    if ref.get().exists:
-        ref.delete()
+    doc = await ref.get()
+    if doc.exists:
+        await ref.delete()
         return {"message": "Reto eliminado"}
     raise HTTPException(status_code=404, detail="Reto no encontrado")
 
 @router.post("/{match_id}/join")
-def join_match(match_id: str, player: Player):
+async def join_match(match_id: str, player: Player):
     doc_ref = db.collection("Matches").document(match_id)
-    doc = doc_ref.get()
+    doc = await doc_ref.get()
     if not doc.exists:
         raise HTTPException(status_code=404, detail="Reto no encontrado")
+
     datos = doc.to_dict()
     players = datos.get("players", [])
     if any(j["user_id"] == player.user_id for j in players):
         raise HTTPException(status_code=400, detail="Jugador ya unido")
+
     players.append(player.model_dump())
-    doc_ref.update({"players": players})
+    await doc_ref.update({"players": players})
     return {"message": "Jugador unido"}
 
 @router.post("/{match_id}/quit")
-def quit_match(match_id: str, user_id: str = Body(...)):
+async def quit_match(match_id: str, user_id: str = Body(...)):
     doc_ref = db.collection("Matches").document(match_id)
-    doc = doc_ref.get()
+    doc = await doc_ref.get()
     if not doc.exists:
         raise HTTPException(status_code=404, detail="Reto no encontrado")
+
     data = doc.to_dict()
     players = [j for j in data.get("players", []) if j["user_id"] != user_id]
-    doc_ref.update({"players": players})
+    await doc_ref.update({"players": players})
     return {"message": "Jugador removido"}
 
 @router.post("/{match_id}/confirm")
-def confirm_player(match_id: str, user_id: str = Body(...)):
+async def confirm_player(match_id: str, user_id: str = Body(...)):
     doc_ref = db.collection("Matches").document(match_id)
-    doc = doc_ref.get()
+    doc = await doc_ref.get()
     if not doc.exists:
         raise HTTPException(status_code=404, detail="Reto no encontrado")
+
     datos = doc.to_dict()
     players = datos.get("players", [])
+    if not any(j["user_id"] == user_id for j in players):
+        raise HTTPException(status_code=400, detail="Usuario no está en el reto")
+
     for j in players:
         if j["user_id"] == user_id:
             j["confirmed"] = True
-    doc_ref.update({"players": players})
+
+    await doc_ref.update({"players": players})
+
+    confirmed_players = datos.get("confirmed_players", [])
+    if user_id not in confirmed_players:
+        confirmed_players.append(user_id)
+        await doc_ref.update({"confirmed_players": confirmed_players})
+    # ¿Están todos confirmados?
+    all_confirmed = all(p.get("confirmed_players") for p in players) and len(players) > 0
+    if all_confirmed:
+        await doc_ref.update({"status": "confirmed"})
     return {"message": "Jugador confirmado"}
 
 @router.post("/{match_id}/status")
-def update_match_status(match_id: str, status: str = Body(...)):
-    ref = db.collection("Matches").document(match_id)
-    if not ref.get().exists:
+async def update_match_status(match_id: str, status: str = Body(...)):
+    doc_ref = db.collection("Matches").document(match_id)
+    doc = await doc_ref.get()
+    if not doc.exists:
         raise HTTPException(status_code=404, detail="Reto no encontrado")
-    ref.update({"status": status})
+
+    await doc_ref.update({"status": status})
     return {"message": f"Estado cambiado a {status}"}

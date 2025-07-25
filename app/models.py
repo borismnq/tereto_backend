@@ -20,4 +20,5 @@ class Match(BaseModel):
     status: str = "open"
     bet: Optional[str] = None
     players: List[Player] = []
+    confirmed_players: List[Player] = []
     notas: Optional[str] = None

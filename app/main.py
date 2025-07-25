@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from app.routes import matches
+from app.routes import users
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
@@ -18,3 +19,4 @@ app.add_middleware(
 )
 
 app.include_router(matches.router, prefix="/matches", tags=["Retos"])
+app.include_router(users.router, prefix="/users", tags=["Usuarios"])
